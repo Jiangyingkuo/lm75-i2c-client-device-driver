@@ -1,0 +1,45 @@
+// Definitions for I2C EEPROM (24lcxx)
+// www.ittraining.com.tw
+/dts-v1/;
+/plugin/;
+
+/ {
+        compatible = "brcm,bcm2708";
+
+        fragment@0 {
+                target = <&i2c1>;
+                __overlay__ {
+                        #address-cells = <1>;
+                        #size-cells = <0>;
+                        status = "okay";
+                     
+  
+                       at24c02@50{
+                           compatible = "atmel,at24c02";
+                           page_size=<8>;
+                           byte_len=<256>;
+                           reg = <0x50>;
+                        };
+                       
+                       at24c16@51{ 
+                           compatible = "atmel,at24c16";
+                           page_size=<8>;
+                           /*in fact , 24lc16 is 2K byte (256byte*8), slave address are 50,51,52,..,57
+                            here, we only use 256 byte
+                            */
+                         //  byte_len=<2048>; 
+                           byte_len=<256>;
+                           reg = <0x51>;
+                        };
+
+
+
+                       lm75@48{
+		           compatible ="lm75bd";
+			   reg =<0x48>;		 
+                       }; 
+                };
+        };
+        
+        
+};
