@@ -64,7 +64,29 @@ MSByte:  D10 D9 D8 D7 D6 D5 D4 D3
 LSByte:  D2  D1 D0 X  X  X  X  X
 ```
 
-### 4. 溫度換算
+### 4. 資料傳送時序
+
+**讀暫存器**（datasheet Fig 11，用在 Temp/Tos/Thyst）：
+
+```
+S | 0x48+W | A | pointer | A | Sr | 0x48+R | A | MSByte | A | LSByte | NA | P
+  └────── msgs[0]：寫 ──────┘    └───────────── msgs[1]：讀 ─────────────┘
+```
+
+- `msgs[0]`：`flags = 0`，`buf = &reg`（pointer），`len = 1`
+- `msgs[1]`：`flags = I2C_M_RD`，`buf = buf`，`len = 2`
+- 2 個msg放在同一次 `i2c_transfer()`，中間是 Repeated START（Sr），成功時回傳 2
+
+**寫暫存器**（datasheet Fig 10，用在Tos/Thyst）：
+
+```
+S | 0x48+W | A | pointer | A | MSByte | A | LSByte | A | P
+  └────────────── msg：寫，buf = {pointer, MSB, LSB} ──────────────┘
+```
+
+- 1 個msg，`flags = 0`，`len = 3`，成功時回傳 1
+
+### 5. 溫度換算
 
 1. D10 = 0：正溫度，Temp value (°C) = +(Temp data) × 0.125
 2. D10 = 1：負溫度，Temp value (°C) = −(Temp data 的二補數) × 0.125
