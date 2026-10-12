@@ -20,6 +20,8 @@ Raspberry Pi 3（kernel 4.14.98）上的 LM75B I2C client driver，包含 sysfs 
 | 蜂鳴器 | GPIO16 |
 | VCC / GND | 3.3V / GND |
 
+![接線圖](docs/wiring.jpg)
+
 模組板 A0~A2 接地，I2C 位址為 `0x48`。
 
 ## 架構
