@@ -5,9 +5,15 @@
 #include <linux/of.h>
 #include <linux/kernel.h>
 
+#define LED0 5
+#define COM 22
 #define BUZZER 16
 #define LM75_OS_GPIO 18
 #define LM75_IRQ_NAME "lm75_overtemp"
+
+/*#define LM75_ALARM_BUZZER */
+
+
 static int lm75_irq;
 
 static int lm75_read_temp(struct i2c_client *client, int *milldeg)
@@ -48,8 +54,6 @@ static ssize_t temp_show(struct device *dev,struct device_attribute *attr, char 
 		printk(KERN_WARNING "LM75 read temp failed: %d\n", ret);
 		return ret;
 	}
-	else
-		printk(KERN_INFO "LM75 temp = %d mC\n", milldeg);
 	return sprintf(buf,"%d\n",milldeg);
 }
 
@@ -88,11 +92,9 @@ static ssize_t overtemp_show(struct device *dev,struct device_attribute *attr, c
 	int ret,milldeg;
 	ret =lm75_read_overtemp(to_i2c_client(dev),&milldeg);
 	if(ret<0) {
-		printk(KERN_WARNING "LM75 read temp failed: %d\n", ret);
+		printk(KERN_WARNING "LM75 read overtemp failed: %d\n", ret);
 		return ret;
 	}
-	else
-		printk(KERN_INFO "LM75 temp = %d mC\n", milldeg);
 	return sprintf(buf,"%d\n",milldeg);
 }
 
@@ -205,8 +207,32 @@ static int lm75_write_Thystemp_parm(struct i2c_client *client, int milldeg)
 	return 0;
 }
 
+static ssize_t thystemp_show(struct device *dev,struct device_attribute *attr, char *buf)
+{
+	int ret,milldeg;
+	ret =lm75_read_thyst_temp(to_i2c_client(dev),&milldeg);
+	if(ret<0) {
+		printk(KERN_WARNING "LM75 read thyst failed: %d\n", ret);
+		return ret;
+	}
+	return sprintf(buf,"%d\n",milldeg);
+}
+
+static ssize_t thystemp_write(struct device *dev,struct device_attribute *attr, const char *buf,size_t count)
+{
+	int ret,milldeg;
+	ret = kstrtoint(buf, 10, &milldeg);		//int kstrtoint(const char *s, unsigned int base, int *res);
+	if (ret < 0)
+		return ret;
+	ret = lm75_write_Thystemp_parm(to_i2c_client(dev),milldeg);
+	if (ret < 0)
+		return ret;
+	return count;
+}
+
 static DEVICE_ATTR(temp, S_IRUGO, temp_show, NULL);
 static DEVICE_ATTR(overtemp,S_IRUGO | S_IWUSR,overtemp_show,overtemp_write);
+static DEVICE_ATTR(thystemp,S_IRUGO | S_IWUSR,thystemp_show,thystemp_write);
 
 
 static const struct of_device_id lm75_of_match[] = {
@@ -221,11 +247,19 @@ static irqreturn_t lm75_isr(int irq, void *data)
 	level =gpio_get_value(LM75_OS_GPIO);
 	if (level ==0){
 		printk("LM75 OS LOW: overtemperature\n");
-		gpio_set_value(BUZZER, 1);//can we use timer?
+		#ifdef LM75_ALARM_BUZZER
+			gpio_set_value(BUZZER, 1);
+		#else
+			gpio_set_value(LED0,1);
+		#endif
 	}
 	else{
 		printk("LM75 OS High: alarm clear\n");
-		gpio_set_value(BUZZER, 0);//can we use timer?
+		#ifdef LM75_ALARM_BUZZER
+			gpio_set_value(BUZZER, 0);
+		#else
+			gpio_set_value(LED0,0);
+		#endif
 	}
 	return IRQ_HANDLED;
 }
@@ -237,58 +271,45 @@ static int lm75_probe(struct i2c_client *client, const struct i2c_device_id *id)
 	printk(KERN_INFO "LM75 probe called\n");
 	
 	ret =lm75_read_temp(client,&milldeg);
-	if(ret<0)
+	if(ret<0) {
 		printk(KERN_WARNING "LM75 read temp failed: %d\n", ret);
-	else
-		printk(KERN_INFO "LM75 temp = %d mC\n", milldeg);
-	
-	//read default overtemperature threshold
-	ret =lm75_read_overtemp(client,&milldeg);
-	if(ret<0)
-		printk(KERN_WARNING "LM75 read overtemp failed: %d\n", ret);
-	else
-		printk(KERN_INFO "LM75 overtemp = %d mC\n", milldeg);
+		return ret;
+	}
 
 	//write overtemperature threshold
 	ret=lm75_write_overtemp(client);
-	if(ret<0)
+	if(ret<0) {
 		printk(KERN_WARNING "LM75 write overtemp failed: %d\n", ret);
-	else
-		printk(KERN_INFO "LM75 write overtemp success\n");
-
-	//read modified overtemperature threshold 
-	ret =lm75_read_overtemp(client,&milldeg);
-	if(ret<0)
-		printk(KERN_WARNING "LM75 read overtemp failed: %d\n", ret);
-	else
-		printk(KERN_INFO "LM75 overtemp = %d mC\n", milldeg);
+		return ret;
+	}
 
 	//write Thyst
-	ret=lm75_write_Thystemp_parm(client,Thyst);		//28000
-	if(ret<0)
+	ret=lm75_write_Thystemp_parm(client,Thyst);		//26000
+	if(ret<0) {
 		printk(KERN_WARNING "LM75 write thyst temp failed: %d\n", ret);
-	else
-		printk(KERN_INFO "LM75 write thyst temp success\n");
-	
-	//read Thyst
-	ret=lm75_read_thyst_temp(client,&milldeg);
-	if(ret<0)
-		printk(KERN_WARNING "LM75 read thyst temp failed: %d\n", ret);
-	else
-		printk(KERN_INFO "LM75 thyst temp = %d mC\n", milldeg);
-	
+		return ret;
+	}
+
 	// int device_create_file(struct device *dev, const struct device_attribute *attr)
 	device_create_file(&client->dev ,&dev_attr_temp);
-	
 	device_create_file(&client->dev ,&dev_attr_overtemp);
-	
+	device_create_file(&client->dev ,&dev_attr_thystemp);
+
 	//setup gpio 18 as input and request irq
-	if(gpio_request(LM75_OS_GPIO,"BUTTON1")) return -1;
+	if(gpio_request(LM75_OS_GPIO,"LM75_OS")) return -1;
 	if(gpio_direction_input(LM75_OS_GPIO)) return -1;
 	
 	//buzzer
-	if(gpio_request(BUZZER, "BUZZER")) return -1;
-	gpio_direction_output(BUZZER, 0 );
+	#ifdef LM75_ALARM_BUZZER
+		if(gpio_request(BUZZER, "BUZZER")) return -1;
+		gpio_direction_output(BUZZER, 0 );
+	#else
+		if(gpio_request(LED0,"LED0_GPIO")) return -1;
+		if(gpio_request(COM,"COM_GPIO")) return -1;
+
+		gpio_direction_output(LED0, 0);
+		gpio_direction_output(COM, 1);
+	#endif
 
 	if( (lm75_irq= gpio_to_irq(LM75_OS_GPIO)) < 0 )  return -1;
 	if( request_irq( lm75_irq, lm75_isr ,IRQF_TRIGGER_FALLING | IRQF_TRIGGER_RISING, LM75_IRQ_NAME, client)) return -1;
@@ -300,11 +321,19 @@ static int lm75_remove(struct i2c_client *client)
 	printk(KERN_INFO "LM75 remove called\n");
 	device_remove_file(&client->dev,&dev_attr_temp);
 	device_remove_file(&client->dev ,&dev_attr_overtemp);
-		
-	free_irq(lm75_irq, client);
+	device_remove_file(&client->dev ,&dev_attr_thystemp);
 
-	gpio_set_value(BUZZER, 0);
-	gpio_free(BUZZER);
+	free_irq(lm75_irq, client);
+	
+	#ifdef LM75_ALARM_BUZZER
+		gpio_set_value(BUZZER, 0);
+		gpio_free(BUZZER);
+	#else
+		gpio_set_value(LED0,0);
+		gpio_set_value(COM,0);
+		gpio_free(LED0);
+		gpio_free(COM);
+	#endif
 	gpio_free(LM75_OS_GPIO);
 	return 0;
 }
@@ -323,9 +352,6 @@ static struct i2c_driver lm75_driver = {
         .remove = lm75_remove,
     .id_table = lm75_id,
 };
-
-
-
 
 static int __init lm75_init(void)
 {
